@@ -221,6 +221,19 @@ def fit_lof(X, alg):
 
 
 #%%
+def election(v, n_voters):
+    voters = v
+    
+    ax = voters.replace(1, 0) # replacing inlier with 0
+    am = ax.replace(-1, 1) # replacing outlier with 1
+    sum_votes = am.sum(axis='columns') # summing votes across voters
+    election_results = sum_votes / n_voters
+    
+    return(election_results)
+
+
+
+#%%
 def get_labels(df, id, n_features):
     """ 
     df - data frame to be used
@@ -233,53 +246,70 @@ def get_labels(df, id, n_features):
     dbscan_labels = []
     ocsvm_labels = {}
     lof_labels = {}
-
+    
+    
+    if len(ocsvm_labels) < len(ocsvm_kernels):    
+        for k in ocsvm_kernels:
+            ocsvm_labels[k] = []
+        for l_alg in lof_algs:
+            lof_labels[l_alg] = []
+    
     for spare_part in spare_parts:
 
-        print(spare_part)
+        #print(spare_part)
         part_df = df.where(df[id] == spare_part).dropna()
         part_df.drop(id, axis=1, inplace=True)
+        part_df.drop('yyyymm', axis=1, inplace=True)
 
-        part_df = StandardScaler().fit_transform(part_df.values.reshape(-1, 1))
-        part_df = pd.DataFrame(part_df)
-
+        #part_df = StandardScaler().fit_transform(part_df.values.reshape(-1, 1))
+        #part_df = pd.DataFrame(part_df)
+        
         
         dbscan_labels.extend(fit_dbscan(part_df, 3, 5))
         ifores_labels.extend(fit_iforest(part_df, 0.01))
 
         for k in ocsvm_kernels:
-            if len(ocsvm_labels) < len(ocsvm_kernels):
-                ocsvm_labels[k] = []
-            else:
-                ocsvm_labels[k].extend(fit_oc_svm(part_df, k))
+            ocsvm_labels[k].extend(fit_oc_svm(part_df, k))
 
         for l_alg in lof_algs:
-            if len(lof_labels) < len(lof_algs):
-                lof_labels[l_alg] = []
-            else:
-                lof_labels[l_alg].extend(fit_lof(part_df, l_alg))  
+            lof_labels[l_alg].extend(fit_lof(part_df, l_alg))  
 
-
+            
+    for k in ocsvm_kernels:
+        df[f'ocsvm_{k}'] = ocsvm_labels[k]
+    for l_alg in lof_algs:
+        df[f'lof_{l_alg}'] = lof_labels[l_alg]
     df['dbscan_lbls'] = dbscan_labels
     df['iforest_lbls'] = ifores_labels
 
 
-    return(df, ocsvm_labels)
+    return(df)
 
 
 # %%
 def anomaly_detector(data_frame, dimensions=1, **params):
 
-
+    initial_shape = data_frame.shape[1]
+    
     if dimensions == 1: # the single dimensions flow
-        
-        full_df = get_labels(data_frame, 'spare_part_id', 1)
 
+        full_df = get_labels(data_frame, 'spare_part_id', 1)
+    
     elif dimensions >= 2: # multidimensional flow
         pass
     else:
         print("Garbage value for dimensions [it is expected to be 1 for 1D data and 2+D for multidimensional data]")
-
-
+    
+    final_shape = full_df.shape[1]
+    new_columns = final_shape - initial_shape
+    
+    voters = full_df.iloc[:, new_columns:]
+    
+    data_frame = data_frame.iloc[:, :initial_shape]
+    data_frame['labels'] = election(voters, new_columns)
+    #data_frame['labels'] = data_frame['labels'].apply(lambda x: 1 if x >= 0.7 else 0)
+    
     return(data_frame)
 # %%
+
+test_phase = anomaly_detector(data_set)
