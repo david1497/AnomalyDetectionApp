@@ -1,155 +1,4 @@
 #%%
-from pyspark.sql.functions import *
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import QuantileTransformer
-from sklearn.ensemble import IsolationForest
-from sklearn.neighbors import LocalOutlierFactor
-from sklearn.svm import OneClassSVM
-from sklearn.cluster import DBSCAN
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-import pandas as pd
-from numpy import unique
-from numpy import where
-import matplotlib.pyplot as plt
-import missingno as msno
-
-#%%
-## Some basic data preparation
-synthetic_input_data_pd = synthetic_input_data.toPandas()
-volvo_input_data_transformed_pd = volvo_input_data_transformed.toPandas()
-synthetic_data_box = synthetic_input_data_pd.copy()
-synthetic_data_box.drop(["spare_part_id", "yyyymm"], axis=1, inplace=True)
-synthetic_data_box["demand_quantity"] = synthetic_data_box["demand_quantity"].astype('float')
-
-
-#%%
-# Checking if none columns doesn't conatain any outlier. Maybe the a column contains only data for one observation or the majority is one kind
-part_count = synthetic_input_data_pd.spare_part_id.value_counts()
-time_count = synthetic_input_data_pd.yyyymm.value_counts()
-demand_count = synthetic_input_data_pd.demand_quantity.value_counts()
-plt.plot(demand_count)
-plt.figure(figsize=(16, 10))
-
-
-#%%
-# Checking if none columns doesn't conatain any outlier. Maybe the a column contains only data for one observation or the majority is one kind
-volvo_input_data_transformed_df = volvo_input_data_transformed.toPandas()
-v_part_count = volvo_input_data_transformed_df.spare_part_id.value_counts()
-time_b_count = volvo_input_data_transformed_df.time_bucket.value_counts()
-time_btype_count = volvo_input_data_transformed_df.time_bucket_type.value_counts()
-demand_l_count = volvo_input_data_transformed_df.total_demand_lines.value_counts()
-demand_q_count = volvo_input_data_transformed_df.total_demand_quantity.value_counts()
-plt.plot(demand_q_count)
-plt.figure(figsize=(16, 10))
-
-#%%
-# checking if we have any missing data
-msno.matrix(synthetic_input_data_pd)
-# checking if we have any missing data
-msno.matrix(volvo_input_data_transformed_pd)
-
-#%%
-# Boxplotting
-green_diamond = dict(markerfacecolor='g', marker='D')
-fig3, ax3 = plt.subplots()
-ax3.set_title('Changed Outlier Symbols')
-ax3.boxplot(synthetic_data_box.demand_quantity, flierprops=green_diamond)
-
-red_diamond = dict(markerfacecolor='r', marker='D')
-fig3, ax3 = plt.subplots(figsize=(10, 7))
-ax3.set_title('Changed Outlier Symbols')
-ax3.boxplot(volvo_input_data_transformed_pd.total_demand_quantity, flierprops=red_diamond)
-
-red_diamond = dict(markerfacecolor='r', marker='D')
-fig3, ax3 = plt.subplots(figsize=(10, 7))
-ax3.set_title('Changed Outlier Symbols')
-ax3.boxplot(volvo_input_data_transformed_pd.total_demand_lines, flierprops=red_diamond)
-
-#%%
-X = synthetic_input_data_pd.copy()
-X = X.drop(["spare_part_id", "yyyymm"], axis=1)
-
-kmeans_alg = ["elkan", "auto", "full"]
-
-#%%
-# Isolation Forest
-def fit_iforest(contamination, df):
-    iso = IsolationForest(contamination=contamination)
-    iso_pred = iso.fit_predict(df)
-    
-    return iso_pred
-#%%
-
-
-#%%
-# Kmeans
-def fit_kmeans(alg, df):
-    
-    kmeans = KMeans(n_clusters=2, algorithm=alg).fit(df)
-    kmeans_pred = kmeans.labels_
-    
-    return kmeans_pred
-
-
-X["is_outlier_if"] = X["is_outlier_if"].map({1:0, -1:1})
-X["is_outlier_svm"] = X["is_outlier_svm"].map({1:0, -1:1})
-X["is_outlier_lof"] = X["is_outlier_lof"].map({1:0, -1:1})
-X["is_outlier_lof"].value_counts()
-
-
-
-#%%
-fit_lof_arr = []
-fit_oc_svm_arr = []
-fit_iforest_arr = []
-fit_kmeans_arr = []
-
-
-#%%
-def predict_outliers(df):
-    
-    for alg in lof_alg: # 4 models
-        fit_lof_arr.append(fit_lof(alg, df))
-        
-    for contamination in contaminations:
-        fit_oc_svm_arr.append(fit_oc_svm(contamination, df)) # 5 models
-        fit_iforest_arr.append(fit_iforest(contamination, df)) # 5 models
-    
-    for alg in kmeans_alg: # 3 models
-        fit_kmeans_arr.append(fit_kmeans(alg, df).transpose())
-    
-    
-    k_means_df = pd.DataFrame(fit_kmeans_arr)
-    k_means_df.transpose()
-    lof_df = pd.DataFrame(fit_lof_arr)
-    lof_df.transpose()
-    oc_svm_df = pd.DataFrame(fit_oc_svm_arr)
-    oc_svm_df.transpose()
-    iforest_df = pd.DataFrame(fit_iforest_arr)
-    iforest_df.transpose()
-    
-    return k_means_df, lof_df, oc_svm_df, iforest_df
-
-#%%
-pred_out = predict_outliers(X)
-
-#%%
-# Compute the mean out of the predictions and consider as outliers only the points with more than 75%
-def voting(row):  
-    if row['voting_rate'] > 0.75:
-        return 0
-    else:
-        return 1
-
-#%%
-def sum(row):
-    rate = sum(row)
-    
-    return rate
-
-
-#%%
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -165,6 +14,9 @@ from sklearn.neighbors import LocalOutlierFactor
 # %%
 data_file = "synthetic_input_data.csv"
 data_set = pd.read_csv(data_file, sep=";")
+true_labels = pd.read_csv("syntethic_original.csv", sep=";")
+true_labels = true_labels.iloc[:19056, -5:]
+true_labels = true_labels.iloc[:, :1]
 
 
 #%%
@@ -198,7 +50,6 @@ ocsvm_kernels = ['linear', 'poly', 'rbf', 'sigmoid']
 
 def fit_oc_svm(X, k):
     """
-
     """
     oc_svm_model = OneClassSVM(kernel=k)
     labels = oc_svm_model.fit_predict(X)
@@ -212,7 +63,6 @@ lof_algs = ['auto', 'ball_tree', 'kd_tree', 'brute']
 
 def fit_lof(X, alg):
     """
-
     """
     lof_model = LocalOutlierFactor(algorithm=alg)
     lof_pred = lof_model.fit_predict(X)
@@ -307,9 +157,25 @@ def anomaly_detector(data_frame, dimensions=1, **params):
     
     data_frame = data_frame.iloc[:, :initial_shape]
     data_frame['labels'] = election(voters, new_columns)
-    #data_frame['labels'] = data_frame['labels'].apply(lambda x: 1 if x >= 0.7 else 0)
+    data_frame['labels'] = data_frame['labels'].apply(lambda x: 1 if x >= 0.7 else 0)
     
     return(data_frame)
-# %%
 
-test_phase = anomaly_detector(data_set)
+
+# %%
+test_phase, full_voters = anomaly_detector(data_set)
+test_phase['true_labels'] = true_labels
+
+
+#%%
+final_df = test_phase.iloc[:, :3]
+amx = test_phase.iloc[:, -2:]
+final_df = final_df.merge(amx, how="left", left_index=True, right_index=True)
+
+
+#%%
+confusion_matrix(final_df['true_labels'], final_df['labels'])
+
+
+#%%
+votes = test_phase.groupby(['labels'])['labels'].count()
